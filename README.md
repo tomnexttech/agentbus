@@ -248,13 +248,13 @@ that survives is the part that stays true.
 python3 -m pytest tests/ -q      # or: python3 tests/test_bus.py
 ```
 
-28 tests, no dependencies. Two are worth reading rather than running:
+30 tests, no dependencies. Two are worth reading rather than running:
 `test_negative_control_naive_guard_is_defeated` (asserts a vulnerability, so the suite
 stays calibrated) and `test_concurrent_updates_lose_nothing` (eight processes, one counter).
 
 ## Scope
 
-These are four files. Copy them into your project if you'd rather not add a dependency —
+These are five module files. Copy them into your project if you'd rather not add a dependency —
 that's a legitimate use and the licence permits it.
 
 `agentbus` is the free half of **[Agent Fleet Field Notes](https://tomnexttech.gumroad.com/l/agent-fleet-field-notes)**, a written

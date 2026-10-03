@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """agentbus — small, boring primitives for agents that run unattended.
 
-Four things, each extracted from a production incident rather than from a
+Five things, each extracted from a production incident rather than from a
 design document:
 
     Bus / Topic / Reading   one writer per topic; expiry with a stated basis;
@@ -9,6 +9,7 @@ design document:
     AtomicJSON              flock -> re-read -> backup -> tmp -> os.replace
     Tri                     three-valued answers, because unknown is not no
     LoopbackGuard           four locks for a localhost endpoint that can run code
+    stamp / observed_line   timestamps that stay true after the screen stops updating
 
 No dependencies. Python 3.9+. MIT.
 

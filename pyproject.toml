@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentbus"
 version = "0.1.0"
-description = "Four small primitives for agents that run unattended: a one-writer bus, atomic JSON state, three-valued answers, and a four-lock guard for localhost endpoints that can run code."
+description = "Five small primitives for agents that run unattended: a one-writer bus, atomic JSON state, three-valued answers, a four-lock guard for localhost endpoints that can run code, and timestamps that stay true."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }

@@ -242,6 +242,40 @@ def test_backup_written_before_overwrite():
     assert json.load(open(os.path.join(d, "backups", backups[0])))["v"] == 1
 
 
+def _generations(d):
+    b = os.path.join(d, "backups")
+    return [json.load(open(os.path.join(b, f)))["v"] for f in sorted(os.listdir(b))]
+
+
+def _writes_at_one_instant(path, values, keep):
+    """Every write at the same clock reading -- the same second and the same
+    microsecond -- which is the worst case for a time-stamped backup name."""
+    import agentbus.atomic as atomic_mod
+
+    real = atomic_mod._clock
+    atomic_mod._clock = lambda: 1790000000.25
+    try:
+        s = AtomicJSON(path, keep=keep)
+        for v in values:
+            s.write({"v": v})
+    finally:
+        atomic_mod._clock = real
+
+
+def test_same_second_writes_keep_every_generation():
+    """Regression: names were stamped to the second, so writes in the same
+    second copied onto one backup file. Three writes left one generation."""
+    d = tempfile.mkdtemp(prefix="agentbus-samesec-")
+    _writes_at_one_instant(os.path.join(d, "s.json"), [0, 1, 2], keep=10)
+    assert _generations(d) == [0, 1], _generations(d)
+
+
+def test_pruning_keeps_the_newest_when_names_collide():
+    d = tempfile.mkdtemp(prefix="agentbus-prune-")
+    _writes_at_one_instant(os.path.join(d, "s.json"), [0, 1, 2, 3, 4, 5], keep=2)
+    assert _generations(d) == [3, 4], _generations(d)
+
+
 def test_no_temp_files_left_behind():
     d = tempfile.mkdtemp(prefix="agentbus-tmp-")
     path = os.path.join(d, "s.json")

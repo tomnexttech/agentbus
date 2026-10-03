@@ -16,7 +16,8 @@ The write is five steps, in this order, and the order is the whole point:
 
     1. flock          take an exclusive lock on a *separate* lock file
     2. re-read        read the current state INSIDE the lock, not before it
-    3. backup         copy the previous good file aside
+    3. backup         copy the previous good file aside, under a name
+                      claimed exclusively (one generation per write)
     4. tmp write      write the new content to a temp file in the same dir
     5. os.replace     atomically swap it into place
 
@@ -41,6 +42,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -50,6 +52,20 @@ try:                                    # POSIX only. Degrade, do not crash.
     import fcntl
 except ImportError:                     # pragma: no cover - Windows
     fcntl = None                        # type: ignore[assignment]
+
+#: The clock behind backup names. A module attribute so a test can freeze it.
+_clock = time.time
+
+
+def _backup_stamp(now: float) -> str:
+    """`YYYYmmdd-HHMMSS-ffffff`. Sorts in time order, and extends the older
+    `YYYYmmdd-HHMMSS` names, so a directory holding both still sorts right."""
+    return "%s-%06d" % (time.strftime("%Y%m%d-%H%M%S", time.localtime(now)),
+                        int((now % 1) * 1000000))
+
+
+#: `<name>-NNN`: a backup that continued an existing name in the same instant.
+_SUFFIXED = re.compile(r"^(.*)-(\d{3})$")
 
 
 class AtomicJSON:
@@ -179,12 +195,45 @@ class AtomicJSON:
         if not self.backup_dir or not os.path.exists(self.path):
             return
         os.makedirs(self.backup_dir, exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
         base = os.path.basename(self.path)
-        dst = os.path.join(self.backup_dir, "%s.%s" % (base, stamp))
+        name, n = "%s.%s" % (base, _backup_stamp(_clock())), 0
+        # Names used to be stamped to the second, so two writes in the same
+        # second copied onto one file: keep=10, and a burst of updates left a
+        # single generation. Two rules now:
+        #   * the new name sorts after every existing backup, because pruning
+        #     goes by name order -- same instant (or a clock that stepped
+        #     back) continues the newest name with a -NNN suffix;
+        #   * the name is claimed with O_EXCL, never just computed, so even
+        #     without a working lock two writers cannot share one file.
         try:
-            shutil.copy2(self.path, dst)
+            existing = [f for f in os.listdir(self.backup_dir) if f.startswith(base + ".")]
         except OSError:
+            existing = []
+        latest = max(existing) if existing else ""
+        if name <= latest:
+            m = _SUFFIXED.match(latest)
+            name, n = (m.group(1), int(m.group(2)) + 1) if m else (latest, 1)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+        while True:
+            if n > 999:
+                return                  # a thousand writes in one microsecond
+            dst = os.path.join(self.backup_dir, name if n == 0 else "%s-%03d" % (name, n))
+            try:
+                fd = os.open(dst, flags, 0o600)
+                break
+            except FileExistsError:
+                n += 1
+            except OSError:
+                return
+        try:
+            with os.fdopen(fd, "wb") as out, open(self.path, "rb") as src:
+                shutil.copyfileobj(src, out)
+            shutil.copystat(self.path, dst)
+        except OSError:
+            try:
+                os.unlink(dst)          # our own half-written claim, nothing else
+            except OSError:
+                pass
             return
         self._prune(base)
 
